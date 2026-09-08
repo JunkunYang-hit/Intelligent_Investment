@@ -1,0 +1,27 @@
+{
+  "market": {
+    "bar_frequency": "1d",
+    "universe_name": "沪深300示例池",
+    "symbols": ["510300.SH"],
+    "lot_size": 100
+  },
+  "backtest": {
+    "initial_cash": 1000000.0,
+    "commission_rate": 0.0003,
+    "minimum_commission": 5.0,
+    "sell_stamp_duty_rate": 0.0005,
+    "slippage_bps": 2.0,
+    "annual_trading_days": 252
+  },
+  "strategy": {
+    "name": "dual_moving_average",
+    "short_window": 5,
+    "long_window": 20,
+    "target_weight": 0.2
+  },
+  "risk": {
+    "max_order_value_ratio": 0.25,
+    "max_symbol_weight": 0.3
+  }
+}
+
