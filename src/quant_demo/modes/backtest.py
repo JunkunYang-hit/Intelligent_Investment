@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import datetime
 from itertools import groupby
 
@@ -28,6 +29,8 @@ class BacktestEngine:
         oms: OrderManagementSystem,
         broker: BrokerSimulator,
         annual_trading_days: int = 252,
+        strategy_name: str | None = None,
+        strategy_parameters: Mapping[str, object] | None = None,
     ) -> None:
         self.strategy = strategy
         self.account = account
@@ -36,6 +39,8 @@ class BacktestEngine:
         self.oms = oms
         self.broker = broker
         self.annual_trading_days = annual_trading_days
+        self.strategy_name = strategy_name or type(strategy).__name__
+        self.strategy_parameters = dict(strategy_parameters or {})
         self._has_run = False
 
     def run(self, bars: list[Bar]) -> BacktestResult:
@@ -143,6 +148,8 @@ class BacktestEngine:
             "initial_cash": self.account.initial_cash,
             "annual_trading_days": self.annual_trading_days,
             "strategy": type(self.strategy).__name__,
+            "strategy_name": self.strategy_name,
+            "strategy_parameters": dict(self.strategy_parameters),
             "order_count": len(self.oms.orders),
             "filled_order_count": statuses.count(OrderStatus.FILLED),
             "rejected_order_count": statuses.count(OrderStatus.REJECTED),
