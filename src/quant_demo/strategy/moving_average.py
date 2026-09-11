@@ -6,10 +6,18 @@ from collections.abc import Mapping, Sequence
 
 from quant_demo.models import Bar, Side
 from quant_demo.strategy.base import Strategy
+from quant_demo.strategy.indicators import sma
 
 
 class DualMovingAverageStrategy(Strategy):
-    """日线双均线：仅在发生交叉时发出一次方向信号。"""
+    """日线双均线：仅在发生交叉时发出一次方向信号。
+
+    - 短均线上穿长均线（金叉）：BUY
+    - 短均线下穿长均线（死叉）：SELL
+    - 其他情况：None
+
+    预热期：至少需要 ``long_window + 1`` 根 Bar（含当前 Bar）。
+    """
 
     def __init__(self, short_window: int = 5, long_window: int = 20) -> None:
         if not 1 <= short_window < long_window:
@@ -21,11 +29,11 @@ class DualMovingAverageStrategy(Strategy):
         closes = [item.close for item in history.get(bar.symbol, ())]
         if len(closes) < self.long_window + 1:
             return None
-        previous = closes[:-1]
-        short_now = sum(closes[-self.short_window :]) / self.short_window
-        long_now = sum(closes[-self.long_window :]) / self.long_window
-        short_previous = sum(previous[-self.short_window :]) / self.short_window
-        long_previous = sum(previous[-self.long_window :]) / self.long_window
+        short_ma = sma(closes, self.short_window)
+        long_ma = sma(closes, self.long_window)
+        short_previous, short_now = short_ma[-2], short_ma[-1]
+        long_previous, long_now = long_ma[-2], long_ma[-1]
+        # 长度检查已保证这四个值不为 None。
         if short_previous <= long_previous and short_now > long_now:
             return Side.BUY
         if short_previous >= long_previous and short_now < long_now:
