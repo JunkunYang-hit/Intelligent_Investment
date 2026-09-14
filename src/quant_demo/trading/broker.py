@@ -36,8 +36,6 @@ class BrokerSimulator:
             raise ValueError(f"只有 CREATED 订单可以成交，当前状态为 {order.status.value}")
         if order.symbol != bar.symbol:
             raise ValueError("订单标的与行情标的不一致")
-        if order.status is not OrderStatus.CREATED:
-            raise ValueError("只有 CREATED 订单可以撮合")
         if order.quantity <= 0:
             raise ValueError("订单数量必须大于 0")
         if bar.datetime <= order.created_at:
