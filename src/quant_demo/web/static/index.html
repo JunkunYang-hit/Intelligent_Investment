@@ -56,6 +56,11 @@
           <article class="metric panel"><p>夏普比率</p><strong>—</strong><small>风险调整收益</small></article>
           <article class="metric panel"><p>成交次数</p><strong>—</strong><small>实际模拟成交</small></article>
         </div>
+        <article class="panel holdings-panel" id="overview-holdings">
+          <div class="panel-head"><div><p class="eyebrow">PAPER PORTFOLIO</p><h3>我的期末模拟持仓</h3></div><span class="badge cyan">非真实账户</span></div>
+          <div class="holding-summary"><div><span>账户总资产</span><strong data-total-equity>—</strong></div><div><span>可用现金</span><strong data-cash>—</strong></div><div><span>持仓市值</span><strong data-market-value>—</strong></div><div><span>总浮动盈亏</span><strong data-unrealized-pnl>—</strong></div></div>
+          <div class="table-wrap"><table class="holdings-table"><thead><tr><th>持仓标的</th><th>持仓数量</th><th>平均成本</th><th>最新价格</th><th>持仓市值</th><th>浮动盈亏</th><th>账户占比</th></tr></thead><tbody data-holding-body><tr><td class="empty" colspan="7">运行回测后显示期末模拟持仓</td></tr></tbody></table></div>
+        </article>
         <article class="panel architecture">
           <div class="panel-head"><div><p class="eyebrow">SHARED TRADING CORE</p><h3>统一执行链路</h3></div><span class="muted">严格避免未来数据</span></div>
           <div class="flow"><span>MARKET DATA</span><i>→</i><span>STRATEGY</span><i>→</i><span>RISK</span><i>→</i><span>OMS</span><i>→</i><span>BROKER</span><i>→</i><span>ACCOUNT</span></div>
@@ -87,6 +92,11 @@
               <div class="chart-wrap"><svg id="equity-chart" viewBox="0 0 900 330" role="img" aria-label="策略与基准净值曲线"><text x="450" y="165" text-anchor="middle">运行回测后显示净值曲线</text></svg></div>
               <div class="chart-meta"><span id="result-period">尚未运行</span><span id="snapshot-id">SNAPSHOT —</span></div>
             </article>
+            <article class="panel holdings-panel" id="backtest-holdings">
+              <div class="panel-head"><div><p class="eyebrow">END-OF-PERIOD POSITION</p><h3>回测期末模拟持仓</h3></div><span class="badge cyan">PAPER ACCOUNT</span></div>
+              <div class="holding-summary"><div><span>账户总资产</span><strong data-total-equity>—</strong></div><div><span>可用现金</span><strong data-cash>—</strong></div><div><span>持仓市值</span><strong data-market-value>—</strong></div><div><span>总浮动盈亏</span><strong data-unrealized-pnl>—</strong></div></div>
+              <div class="table-wrap"><table class="holdings-table"><thead><tr><th>持仓标的</th><th>持仓数量</th><th>平均成本</th><th>最新价格</th><th>持仓市值</th><th>浮动盈亏</th><th>账户占比</th></tr></thead><tbody data-holding-body><tr><td class="empty" colspan="7">等待回测结果</td></tr></tbody></table></div>
+            </article>
           </div>
         </div>
       </section>
@@ -109,6 +119,11 @@
             </div>
           </div>
         </div>
+        <article class="panel holdings-panel" id="simulation-holdings">
+          <div class="panel-head"><div><p class="eyebrow">CURRENT POSITION</p><h3>我的实时模拟持仓</h3></div><span class="badge cyan">随 BAR 更新</span></div>
+          <div class="holding-summary"><div><span>账户总资产</span><strong data-total-equity>—</strong></div><div><span>可用现金</span><strong data-cash>—</strong></div><div><span>持仓市值</span><strong data-market-value>—</strong></div><div><span>总浮动盈亏</span><strong data-unrealized-pnl>—</strong></div></div>
+          <div class="table-wrap"><table class="holdings-table"><thead><tr><th>持仓标的</th><th>持仓数量</th><th>平均成本</th><th>最新价格</th><th>持仓市值</th><th>浮动盈亏</th><th>账户占比</th></tr></thead><tbody data-holding-body><tr><td class="empty" colspan="7">启动模拟后显示实时持仓</td></tr></tbody></table></div>
+        </article>
         <article class="panel"><div class="panel-head"><div><p class="eyebrow">LIVE EVENT STREAM</p><h3>最新订单与成交</h3></div><span class="muted">最近 20 条</span></div><div class="event-stream" id="sim-events"><p class="empty">启动模拟后显示事件</p></div></article>
       </section>
 

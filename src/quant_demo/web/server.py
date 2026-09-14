@@ -228,6 +228,7 @@ class QuantDemoApplication:
         rejected = [order for order in result.orders if order.status.value == "REJECTED"]
         return {
             "result": _jsonable(result),
+            "account": _jsonable(engine.account.snapshot()),
             "benchmark_curve": benchmark,
             "summary": {
                 "symbol": symbol,

@@ -68,6 +68,24 @@ function setMetricGrid(selector, values) {
 
 function metricTone(value, inverse = false) { return (inverse ? value <= 0 : value >= 0) ? "positive" : "negative"; }
 
+function renderHoldings(selector, account) {
+  const panel = $(selector);
+  if (!panel || !account) return;
+  $("[data-total-equity]", panel).textContent = money(account.total_equity);
+  $("[data-cash]", panel).textContent = money(account.cash);
+  $("[data-market-value]", panel).textContent = money(account.market_value);
+  const pnl = $("[data-unrealized-pnl]", panel);
+  pnl.textContent = money(account.unrealized_pnl);
+  pnl.classList.toggle("positive", account.unrealized_pnl >= 0);
+  pnl.classList.toggle("negative", account.unrealized_pnl < 0);
+  const body = $("[data-holding-body]", panel);
+  body.innerHTML = account.positions.length ? account.positions.map(position => {
+    const weight = account.total_equity ? position.market_value / account.total_equity : 0;
+    const tone = position.unrealized_pnl >= 0 ? "positive" : "negative";
+    return `<tr><td><b class="symbol-cell">${position.symbol}</b><small>模拟持仓</small></td><td>${position.quantity.toLocaleString("zh-CN")} 股</td><td>${money(position.average_cost)}</td><td>${money(position.last_price)}</td><td>${money(position.market_value)}</td><td class="${tone}">${money(position.unrealized_pnl)}</td><td><span class="weight-value">${(weight * 100).toFixed(2)}%</span><i class="weight-track"><b style="width:${Math.min(100, weight * 100)}%"></b></i></td></tr>`;
+  }).join("") : '<tr><td class="empty holding-empty" colspan="7"><b>当前为空仓</b><span>策略在所选时点没有未平仓头寸，现金仍保留在模拟账户中</span></td></tr>';
+}
+
 function renderResults(data) {
   state.result = data;
   const m = data.result.metrics;
@@ -81,6 +99,8 @@ function renderResults(data) {
   setMetricGrid("#overview-metrics", [metrics[0], metrics[1], metrics[2], { text: String(m.trade_count), tone: "positive", small: `${m.closed_trade_count} 个完整持仓周期` }]);
   $("#result-period").textContent = `${data.summary.symbol} · ${data.summary.start} → ${data.summary.end} · ${data.summary.bar_count} BAR`;
   $("#snapshot-id").textContent = `SNAPSHOT ${data.summary.snapshot_id.toUpperCase()}`;
+  renderHoldings("#overview-holdings", data.account);
+  renderHoldings("#backtest-holdings", data.account);
   drawChart(data.result.equity_curve, data.benchmark_curve);
   renderActivity();
 }
@@ -138,6 +158,7 @@ function renderSimulation(data) {
   $("#sim-progress-copy").textContent = `${data.index} / ${data.total} BAR`;
   const a = data.account;
   setMetricGrid("#sim-metrics", [{ text: money(a.total_equity), tone: "positive" }, { text: money(a.cash) }, { text: money(a.market_value) }, { text: money(a.total_fees) }]);
+  renderHoldings("#simulation-holdings", a);
   const events = [...data.orders.map(item => ({ ...item, type: "ORDER", at: item.created_at })), ...data.trades.map(item => ({ ...item, type: "TRADE", at: item.datetime }))].sort((a, b) => a.at.localeCompare(b.at)).slice(-20).reverse();
   $("#sim-events").innerHTML = events.length ? events.map(item => `<div class="event"><time>${shortDate(item.at)}</time><b>${item.type}</b><span class="${item.side.toLowerCase()}">${item.side} ${item.quantity} ${item.symbol}</span><small>${item.type === "TRADE" ? `@ ${number(item.price, 3)}` : item.status}</small></div>`).join("") : '<p class="empty">策略预热中，尚无订单事件</p>';
   $("#sim-step").disabled = data.complete;

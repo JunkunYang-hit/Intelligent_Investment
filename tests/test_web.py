@@ -46,6 +46,8 @@ def test_backtest_serializes_real_engine_result_and_snapshot() -> None:
     assert len(payload["result"]["equity_curve"]) == payload["summary"]["bar_count"]
     assert len(payload["benchmark_curve"]) == payload["summary"]["bar_count"]
     assert payload["result"]["metrics"]["initial_equity"] == 1_000_000
+    assert payload["account"]["total_equity"] == payload["result"]["metrics"]["final_equity"]
+    assert isinstance(payload["account"]["positions"], list)
 
 
 @pytest.mark.parametrize(
