@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>NEXUS Quant Lab</title>
+  <!-- 使用相对路径：即使误用文件方式预览，也能加载页面样式。 -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="Nexus 首页">
+        <span class="brand-mark"><i></i><i></i><i></i></span>
+        <span><strong>NEXUS</strong><small>QUANT LAB / 01</small></span>
+      </a>
+      <nav aria-label="主导航">
+        <button class="nav-item active" data-view="overview"><span>01</span>总览面板</button>
+        <button class="nav-item" data-view="backtest"><span>02</span>策略回测</button>
+        <button class="nav-item" data-view="simulation"><span>03</span>模拟运行</button>
+        <button class="nav-item" data-view="activity"><span>04</span>交易记录</button>
+      </nav>
+      <div class="system-card">
+        <div class="signal"><b></b> CORE ONLINE</div>
+        <dl><div><dt>数据源</dt><dd id="side-data">--</dd></div><div><dt>频率</dt><dd id="side-frequency">--</dd></div></dl>
+      </div>
+      <p class="sidebar-foot">EDUCATIONAL SIMULATION<br>NO LIVE EXECUTION</p>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow">INTELLIGENT INVESTMENT SYSTEM</p><h1 id="page-title">策略作战总览</h1></div>
+        <div class="top-status"><span id="clock">--:--:--</span><span class="status-pill"><i></i>本地安全模式</span></div>
+      </header>
+
+      <div id="notice" class="notice hidden" role="alert"><span></span><button aria-label="关闭">×</button></div>
+
+      <section class="view active" id="view-overview">
+        <div class="hero-grid">
+          <article class="hero panel">
+            <div class="hero-copy"><p class="eyebrow">SYSTEM READY</p><h2>把策略信号，变成<br><em>可验证的交易路径。</em></h2><p>数据、策略、风控、撮合与账户使用同一套交易内核。所有展示均来自实际回测结果。</p><button class="primary" data-jump="backtest">配置并运行回测 <b>↗</b></button></div>
+            <div class="orb" aria-hidden="true"><span></span><i></i><b>Q</b></div>
+          </article>
+          <article class="panel integrity">
+            <div class="panel-head"><div><p class="eyebrow">DATA INTEGRITY</p><h3>数据可信度</h3></div><span class="badge cyan">VERIFIED</span></div>
+            <div class="integrity-score"><strong id="data-score">--</strong><span>/ 100</span></div>
+            <div class="meter"><i id="data-meter"></i></div>
+            <dl class="compact-list"><div><dt>有效 Bar</dt><dd id="bar-count">--</dd></div><div><dt>覆盖区间</dt><dd id="date-range">--</dd></div><div><dt>快照验证</dt><dd>运行时生成</dd></div></dl>
+          </article>
+        </div>
+        <div class="metric-grid" id="overview-metrics">
+          <article class="metric panel"><p>策略总收益</p><strong>—</strong><small>等待首次回测</small></article>
+          <article class="metric panel"><p>最大回撤</p><strong>—</strong><small>风险下行幅度</small></article>
+          <article class="metric panel"><p>夏普比率</p><strong>—</strong><small>风险调整收益</small></article>
+          <article class="metric panel"><p>成交次数</p><strong>—</strong><small>实际模拟成交</small></article>
+        </div>
+        <article class="panel architecture">
+          <div class="panel-head"><div><p class="eyebrow">SHARED TRADING CORE</p><h3>统一执行链路</h3></div><span class="muted">严格避免未来数据</span></div>
+          <div class="flow"><span>MARKET DATA</span><i>→</i><span>STRATEGY</span><i>→</i><span>RISK</span><i>→</i><span>OMS</span><i>→</i><span>BROKER</span><i>→</i><span>ACCOUNT</span></div>
+        </article>
+      </section>
+
+      <section class="view" id="view-backtest">
+        <div class="workspace-grid">
+          <form class="panel controls" id="backtest-form">
+            <div class="panel-head"><div><p class="eyebrow">BACKTEST CONTROL</p><h3>运行参数</h3></div><span class="step">01 / CONFIG</span></div>
+            <label>交易标的<select name="symbol" id="symbol"></select></label>
+            <div class="field-pair"><label>开始日期<input type="date" name="start" id="start"></label><label>结束日期<input type="date" name="end" id="end"></label></div>
+            <label>策略模型<select name="strategy" id="strategy"></select></label>
+            <div id="strategy-fields" class="strategy-fields"></div>
+            <div class="field-pair"><label>初始资金（¥）<input type="number" name="initial_cash" id="initial-cash" min="1" step="10000"></label><label>目标仓位（%）<input type="number" name="target_weight" id="target-weight" min="1" max="100" step="1"></label></div>
+            <div class="rule-box"><span>执行规则</span><strong id="execution-rule">--</strong></div>
+            <button class="primary wide" type="submit" id="run-button"><span>运行完整回测</span><b>RUN ↗</b></button>
+          </form>
+
+          <div class="results-stack">
+            <div class="metric-grid result-metrics" id="result-metrics">
+              <article class="metric panel"><p>总收益率</p><strong>—</strong><small>策略净值变化</small></article>
+              <article class="metric panel"><p>最大回撤</p><strong>—</strong><small>越低越稳健</small></article>
+              <article class="metric panel"><p>夏普比率</p><strong>—</strong><small>无风险利率为 0</small></article>
+              <article class="metric panel"><p>胜率</p><strong>—</strong><small>完整持仓周期</small></article>
+            </div>
+            <article class="panel chart-panel">
+              <div class="panel-head"><div><p class="eyebrow">EQUITY CURVE</p><h3>策略净值 vs 买入持有</h3></div><div class="legend"><span><i class="strategy-dot"></i>策略</span><span><i class="benchmark-dot"></i>基准</span></div></div>
+              <div class="chart-wrap"><svg id="equity-chart" viewBox="0 0 900 330" role="img" aria-label="策略与基准净值曲线"><text x="450" y="165" text-anchor="middle">运行回测后显示净值曲线</text></svg></div>
+              <div class="chart-meta"><span id="result-period">尚未运行</span><span id="snapshot-id">SNAPSHOT —</span></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-simulation">
+        <div class="simulation-grid">
+          <article class="panel sim-console">
+            <div class="panel-head"><div><p class="eyebrow">MARKET REPLAY</p><h3>逐日模拟运行</h3></div><span class="badge" id="sim-status">IDLE</span></div>
+            <p class="section-copy">使用与回测相同的策略、风控、OMS、撮合和账户模块，逐根推送真实日 K。</p>
+            <div class="sim-value"><span>当前日期</span><strong id="sim-date">—</strong><small id="sim-price">等待启动</small></div>
+            <div class="progress"><i id="sim-progress"></i></div><p class="progress-copy" id="sim-progress-copy">0 / 0 BAR</p>
+            <div class="button-row"><button class="primary" id="sim-start">启动回放</button><button class="secondary" id="sim-pause" disabled>暂停</button><button class="secondary" id="sim-step" disabled>单步</button></div>
+          </article>
+          <div class="sim-account">
+            <div class="metric-grid two" id="sim-metrics">
+              <article class="metric panel"><p>账户总资产</p><strong>—</strong><small>CASH + MARKET VALUE</small></article>
+              <article class="metric panel"><p>可用现金</p><strong>—</strong><small>AVAILABLE CASH</small></article>
+              <article class="metric panel"><p>持仓市值</p><strong>—</strong><small>MARKET VALUE</small></article>
+              <article class="metric panel"><p>累计费用</p><strong>—</strong><small>COMMISSION + TAX</small></article>
+            </div>
+          </div>
+        </div>
+        <article class="panel"><div class="panel-head"><div><p class="eyebrow">LIVE EVENT STREAM</p><h3>最新订单与成交</h3></div><span class="muted">最近 20 条</span></div><div class="event-stream" id="sim-events"><p class="empty">启动模拟后显示事件</p></div></article>
+      </section>
+
+      <section class="view" id="view-activity">
+        <article class="panel activity-panel">
+          <div class="panel-head"><div><p class="eyebrow">AUDIT TRAIL</p><h3>订单与成交记录</h3></div><div class="segmented"><button class="active" data-table="trades">成交</button><button data-table="orders">订单</button></div></div>
+          <div class="table-wrap"><table><thead id="activity-head"></thead><tbody id="activity-body"><tr><td class="empty" colspan="8">完成一次回测后显示可审计记录</td></tr></tbody></table></div>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
