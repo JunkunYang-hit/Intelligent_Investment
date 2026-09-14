@@ -16,7 +16,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from quant_demo.data import CsvDataService, detect_anomalies, snapshot_id
-from quant_demo.modes import BacktestEngine, SimulationEngine
+from quant_demo.modes import BacktestEngine, SimulationEngine, build_backtest_engine
 from quant_demo.strategy import (
     BollingerBandsStrategy,
     DualMovingAverageStrategy,
@@ -144,6 +144,57 @@ def build_components(config: dict[str, Any], request: dict[str, Any]) -> dict[st
     }
 
 
+def build_request_config(
+    base_config: dict[str, Any], request: dict[str, Any]
+) -> dict[str, Any]:
+    """将 Web 请求覆盖项转换为 C 工厂使用的完整配置。"""
+
+    config = copy.deepcopy(base_config)
+    base_strategy = config["strategy"]
+    base_backtest = config["backtest"]
+    strategy_name = str(request.get("strategy", base_strategy["name"]))
+    strategy_params = request.get("strategy_params", {})
+    if not isinstance(strategy_params, dict):
+        raise ApiError("strategy_params 必须是对象")
+    # 保留 Web 原有的有限值和参数范围校验；实例最终由 C 工厂创建。
+    validation_name = strategy_name.strip().lower()
+    if validation_name == "bollinger_bands":
+        validation_name = "bollinger"
+    build_strategy(validation_name, strategy_params)
+    target_weight = _number(
+        request,
+        "target_weight",
+        float(base_strategy["target_weight"]),
+        minimum=0.01,
+    )
+    if target_weight > 1:
+        raise ApiError("目标仓位不能超过 100%")
+    initial_cash = _number(
+        request,
+        "initial_cash",
+        float(base_backtest["initial_cash"]),
+        minimum=1,
+    )
+
+    # 保留请求级参数优先级，同时禁止 strategy_params 覆盖保留字段。
+    config["strategy"] = {
+        **strategy_params,
+        "name": strategy_name,
+        "target_weight": target_weight,
+    }
+    config["backtest"]["initial_cash"] = initial_cash
+    return config
+
+
+def _factory_error_message(error: ValueError) -> str:
+    """保留 Web 层已有的用户提示，同时使用 C 工厂完成校验。"""
+
+    compatibility_messages = {
+        "窗口必须满足 1 <= short_window < long_window": "短均线周期必须小于长均线周期",
+    }
+    return compatibility_messages.get(str(error), str(error))
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
@@ -213,9 +264,12 @@ class QuantDemoApplication:
 
     def run_backtest(self, request: dict[str, Any]) -> dict[str, Any]:
         symbol, bars = self._bars_for(request)
-        components = build_components(self.config, request)
-        engine = BacktestEngine(**components)
-        result = engine.run(bars)
+        effective_config = build_request_config(self.config, request)
+        try:
+            engine = build_backtest_engine(effective_config)
+            result = engine.run(bars)
+        except ValueError as exc:
+            raise ApiError(_factory_error_message(exc)) from exc
         initial_equity = float(result.metrics["initial_equity"])
         first_close = bars[0].close
         benchmark = [
