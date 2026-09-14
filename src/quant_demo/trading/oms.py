@@ -25,10 +25,14 @@ class OrderManagementSystem:
 
     @staticmethod
     def reject(order: Order, reason: str) -> None:
+        if order.status is not OrderStatus.CREATED:
+            raise ValueError(f"只有 CREATED 订单可以拒绝，当前状态为 {order.status.value}")
         order.status = OrderStatus.REJECTED
         order.reject_reason = reason
 
     @staticmethod
     def fill(order: Order, price: float) -> None:
+        if order.status is not OrderStatus.CREATED:
+            raise ValueError(f"只有 CREATED 订单可以完成，当前状态为 {order.status.value}")
         order.status = OrderStatus.FILLED
         order.price = price

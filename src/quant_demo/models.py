@@ -66,6 +66,8 @@ class Order:
 
 @dataclass(frozen=True)
 class Trade:
+    """一笔已经成交的交易，是账户记账的唯一外部输入。"""
+
     trade_id: str
     order_id: str
     symbol: str
@@ -75,6 +77,16 @@ class Trade:
     datetime: datetime
     commission: float
     stamp_duty: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.trade_id or not self.order_id or not self.symbol:
+            raise ValueError("成交编号、订单编号和股票代码不能为空")
+        if self.quantity <= 0:
+            raise ValueError("成交数量必须大于 0")
+        if self.price <= 0:
+            raise ValueError("成交价格必须大于 0")
+        if self.commission < 0 or self.stamp_duty < 0:
+            raise ValueError("手续费和印花税不能为负")
 
     @property
     def gross_amount(self) -> float:
@@ -87,6 +99,8 @@ class Trade:
 
 @dataclass
 class Position:
+    """单只股票的当前持仓和累计已实现盈亏。"""
+
     symbol: str
     quantity: int = 0
     average_cost: float = 0.0
@@ -98,8 +112,17 @@ class Position:
         return self.quantity * self.last_price
 
     @property
+    def cost_value(self) -> float:
+        """当前剩余持仓的账面成本。"""
+        return self.quantity * self.average_cost
+
+    @property
     def unrealized_pnl(self) -> float:
         return self.quantity * (self.last_price - self.average_cost)
+
+    @property
+    def total_pnl(self) -> float:
+        return self.realized_pnl + self.unrealized_pnl
 
 
 @dataclass(frozen=True)

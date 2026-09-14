@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from itertools import count
 
-from quant_demo.models import Bar, Order, Side, Trade
+from quant_demo.models import Bar, Order, OrderStatus, Side, Trade
 
 
 class BrokerSimulator:
@@ -24,6 +24,8 @@ class BrokerSimulator:
         self._ids = count(1)
 
     def execute_at_open(self, order: Order, bar: Bar) -> Trade:
+        if order.status is not OrderStatus.CREATED:
+            raise ValueError(f"只有 CREATED 订单可以成交，当前状态为 {order.status.value}")
         if order.symbol != bar.symbol:
             raise ValueError("订单标的与行情标的不一致")
         direction = 1 if order.side is Side.BUY else -1
