@@ -8,44 +8,11 @@ from datetime import datetime
 from pathlib import Path
 
 from quant_demo.data import CsvDataService
-from quant_demo.modes import BacktestEngine
-from quant_demo.strategy import DualMovingAverageStrategy
-from quant_demo.trading import (
-    Account,
-    BrokerSimulator,
-    OrderManagementSystem,
-    RiskManager,
-    TargetWeightSizer,
-)
+from quant_demo.modes import BacktestEngine, build_backtest_engine
 
 
 def build_engine(config: dict[str, object]) -> BacktestEngine:
-    market = config["market"]
-    backtest = config["backtest"]
-    strategy = config["strategy"]
-    risk = config["risk"]
-    assert isinstance(market, dict) and isinstance(backtest, dict)
-    assert isinstance(strategy, dict) and isinstance(risk, dict)
-    return BacktestEngine(
-        strategy=DualMovingAverageStrategy(
-            int(strategy["short_window"]), int(strategy["long_window"])
-        ),
-        account=Account(float(backtest["initial_cash"])),
-        sizer=TargetWeightSizer(float(strategy["target_weight"]), int(market["lot_size"])),
-        risk=RiskManager(
-            float(risk["max_order_value_ratio"]),
-            float(risk["max_symbol_weight"]),
-            int(market["lot_size"]),
-        ),
-        oms=OrderManagementSystem(),
-        broker=BrokerSimulator(
-            float(backtest["commission_rate"]),
-            float(backtest["minimum_commission"]),
-            float(backtest["sell_stamp_duty_rate"]),
-            float(backtest["slippage_bps"]),
-        ),
-        annual_trading_days=int(backtest["annual_trading_days"]),
-    )
+    return build_backtest_engine(config)
 
 
 def main() -> None:
