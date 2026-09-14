@@ -184,6 +184,10 @@ function init() {
   $$("[data-table]").forEach(button => button.addEventListener("click", () => { $$("[data-table]").forEach(x => x.classList.remove("active")); button.classList.add("active"); state.table = button.dataset.table; renderActivity(); }));
   setInterval(() => $("#clock").textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false }), 1000);
   const requested = location.hash.slice(1); if (titles[requested]) navigate(requested);
+  if (location.protocol === "file:") {
+    notice("页面样式已加载，但回测功能需要 Python 服务。请在仓库根目录运行：PYTHONPATH=src python3 -m quant_demo.web，然后访问 http://127.0.0.1:8000");
+    return;
+  }
   bootstrap();
 }
 

@@ -19,6 +19,8 @@ quant-web
 quant-web --data path/to/daily.csv --config config/demo.json --port 8000
 ```
 
+> 不要在文件管理器或编辑器中直接双击 `index.html`。直接打开只能预览排版，浏览器无法获得 Python 提供的行情与回测 API。若尚未执行 `pip install -e ".[dev]"`，可以在仓库根目录直接运行 `PYTHONPATH=src python3 -m quant_demo.web`。
+
 ## 页面功能
 
 - 总览面板：数据覆盖范围、核心绩效与统一交易链路；
