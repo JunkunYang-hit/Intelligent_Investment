@@ -13,9 +13,19 @@ def calculate_performance(
     trades: list[Trade],
     annual_trading_days: int = 252,
 ) -> dict[str, float | int]:
+    """计算第一版 Demo 使用的少量、常见绩效指标。
+
+    Sharpe 默认无风险收益率为 0，使用日收益率样本标准差；胜率按一次持仓
+    从建立到完全清仓的完整买卖周期计算，而不是按每次部分卖出计算。
+    """
     if not equity_curve:
         return _empty_metrics()
-    equities = [point.total_equity for point in equity_curve]
+    # 防御性处理：按时间排序，同一时刻只使用最后一个净值点。
+    points_by_time = {point.datetime: point for point in equity_curve}
+    points = [points_by_time[at] for at in sorted(points_by_time)]
+    equities = [point.total_equity for point in points]
+    if any(equity <= 0 for equity in equities):
+        raise ValueError("账户净值必须大于 0")
     returns = [current / previous - 1 for previous, current in zip(equities, equities[1:]) if previous]
     total_return = equities[-1] / equities[0] - 1 if equities[0] else 0.0
     periods = max(1, len(equities) - 1)
@@ -51,23 +61,28 @@ def calculate_performance(
 
 
 def _closed_trade_stats(trades: list[Trade]) -> tuple[int, int]:
-    """按移动平均成本统计每次卖出是否盈利，适用于第一版纯多头。"""
-    states: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
+    """统计完整买卖周期及其中的盈利周期，适用于第一版纯多头。"""
+    # 每只股票保存：持仓数量、平均成本、本轮已实现盈亏。
+    states: dict[str, tuple[int, float, float]] = defaultdict(lambda: (0, 0.0, 0.0))
     closed = wins = 0
     for trade in trades:
-        quantity, average_cost = states[trade.symbol]
+        quantity, average_cost, cycle_pnl = states[trade.symbol]
         if trade.side is Side.BUY:
             new_quantity = quantity + trade.quantity
             average_cost = (quantity * average_cost + trade.gross_amount + trade.total_fee) / new_quantity
             quantity = new_quantity
         else:
+            if trade.quantity > quantity:
+                raise ValueError("成交记录中存在卖出数量超过持仓的情况")
             pnl = (trade.price - average_cost) * trade.quantity - trade.total_fee
-            closed += 1
-            wins += int(pnl > 0)
+            cycle_pnl += pnl
             quantity -= trade.quantity
             if quantity == 0:
+                closed += 1
+                wins += int(cycle_pnl > 0)
                 average_cost = 0.0
-        states[trade.symbol] = quantity, average_cost
+                cycle_pnl = 0.0
+        states[trade.symbol] = quantity, average_cost, cycle_pnl
     return closed, wins
 
 
@@ -84,4 +99,3 @@ def _empty_metrics() -> dict[str, float | int]:
         "win_rate": 0.0,
         "total_fees": 0.0,
     }
-

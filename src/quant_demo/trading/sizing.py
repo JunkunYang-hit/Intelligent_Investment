@@ -18,13 +18,16 @@ class TargetWeightSizer:
     def create_request(
         self, symbol: str, side: Side, price: float, account: Account, at: datetime, reason: str
     ) -> OrderRequest | None:
-        position = account.get_position(symbol)
+        # 只查询已有持仓，不因一次无效信号创建数量为 0 的 Position。
+        position = account.positions.get(symbol)
+        position_value = position.market_value if position else 0.0
+        position_quantity = position.quantity if position else 0
         if side is Side.BUY:
             target_value = account.total_equity * self.target_weight
-            missing_value = max(0.0, target_value - position.market_value)
+            missing_value = max(0.0, target_value - position_value)
             quantity = int(missing_value / price / self.lot_size) * self.lot_size
         else:
-            quantity = position.quantity
+            quantity = position_quantity
         if quantity <= 0:
             return None
         return OrderRequest(symbol, side, quantity, at, reason)
