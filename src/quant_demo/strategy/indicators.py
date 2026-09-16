@@ -35,6 +35,19 @@ class BollingerBands(NamedTuple):
     lower: Series
 
 
+class StochasticResult(NamedTuple):
+    """随机指标 %K 与 %D 两条曲线，均与输入价格序列等长。"""
+
+    k: Series
+    d: Series
+
+
+def _require_same_length(*series: Sequence[float]) -> None:
+    lengths = {len(item) for item in series}
+    if len(lengths) > 1:
+        raise ValueError("输入序列长度必须一致")
+
+
 def sma(values: Sequence[float], window: int) -> Series:
     """简单移动平均：``result[i] = mean(values[i-window+1 .. i])``。
 
@@ -172,3 +185,167 @@ def bollinger_bands(
         upper[i] = center + std_multiplier * deviation
         lower[i] = center - std_multiplier * deviation
     return BollingerBands(middle=middle, upper=upper, lower=lower)
+
+
+def momentum(values: Sequence[float], lookback: int) -> Series:
+    """N 日动量：``result[i] = values[i] / values[i-lookback] - 1``。
+
+    前 ``lookback`` 个位置为 None。``lookback`` 必须大于 0；
+    基准价格（``values[i-lookback]``）必须大于 0。
+    """
+    if lookback < 1:
+        raise ValueError("lookback 必须大于 0")
+    result: Series = [None] * len(values)
+    for i in range(lookback, len(values)):
+        base = values[i - lookback]
+        if base <= 0:
+            raise ValueError("动量基准价格必须大于 0")
+        result[i] = values[i] / base - 1.0
+    return result
+
+
+def highest(values: Sequence[float], window: int) -> Series:
+    """滚动最高值：``result[i] = max(values[i-window+1 .. i])``。
+
+    前 ``window - 1`` 个位置为 None。``window`` 必须大于 0。
+    """
+    if window < 1:
+        raise ValueError("window 必须大于 0")
+    result: Series = [None] * len(values)
+    for i in range(window - 1, len(values)):
+        result[i] = max(values[i - window + 1 : i + 1])
+    return result
+
+
+def lowest(values: Sequence[float], window: int) -> Series:
+    """滚动最低值：``result[i] = min(values[i-window+1 .. i])``。
+
+    前 ``window - 1`` 个位置为 None。``window`` 必须大于 0。
+    """
+    if window < 1:
+        raise ValueError("window 必须大于 0")
+    result: Series = [None] * len(values)
+    for i in range(window - 1, len(values)):
+        result[i] = min(values[i - window + 1 : i + 1])
+    return result
+
+
+def true_range(
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+) -> Series:
+    """真实波幅 TR，首个有效值在索引 0（等于当日 high - low）。
+
+    ``TR[0] = highs[0] - lows[0]``；之后
+    ``TR[i] = max(high-low, |high-prev_close|, |low-prev_close|)``。
+    三条输入序列长度必须一致。
+    """
+    _require_same_length(highs, lows, closes)
+    result: Series = [None] * len(highs)
+    for i in range(len(highs)):
+        if i == 0:
+            result[i] = highs[0] - lows[0]
+        else:
+            previous_close = closes[i - 1]
+            result[i] = max(
+                highs[i] - lows[i],
+                abs(highs[i] - previous_close),
+                abs(lows[i] - previous_close),
+            )
+    return result
+
+
+def atr(
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    period: int = 14,
+) -> Series:
+    """Wilder 平均真实波幅 ATR。
+
+    首个有效值在索引 ``period - 1``，取前 ``period`` 个 TR 的算术平均作为种子，
+    之后按 ``atr[i] = (atr[i-1] * (period - 1) + TR[i]) / period`` 递推。
+    ``period`` 必须大于 0；三条输入序列长度必须一致。
+    """
+    if period < 1:
+        raise ValueError("period 必须大于 0")
+    tr = true_range(highs, lows, closes)
+    result: Series = [None] * len(highs)
+    if len(highs) < period:
+        return result
+    values = [item for item in tr if item is not None]
+    previous = sum(values[:period]) / period
+    result[period - 1] = previous
+    for i in range(period, len(highs)):
+        previous = (previous * (period - 1) + values[i]) / period
+        result[i] = previous
+    return result
+
+
+def stochastic(
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    k_period: int = 14,
+    d_period: int = 3,
+) -> StochasticResult:
+    """随机指标（Stochastic Oscillator）%K 与 %D，取值范围 [0, 100]。
+
+    ``%K[i] = (close - 窗口最低价) / (窗口最高价 - 窗口最低价) * 100``，
+    窗口内最高价为 0 价差时返回 50（多空平衡）；%D 为 %K 的 ``d_period`` 日 SMA。
+    %K 首个有效值在索引 ``k_period - 1``，%D 首个有效值在索引
+    ``k_period + d_period - 2``。``k_period``、``d_period`` 必须大于 0；
+    三条输入序列长度必须一致。
+    """
+    if k_period < 1 or d_period < 1:
+        raise ValueError("k_period、d_period 都必须大于 0")
+    _require_same_length(highs, lows, closes)
+    k_line: Series = [None] * len(closes)
+    for i in range(k_period - 1, len(closes)):
+        window_high = max(highs[i - k_period + 1 : i + 1])
+        window_low = min(lows[i - k_period + 1 : i + 1])
+        price_range = window_high - window_low
+        if price_range == 0.0:
+            k_line[i] = 50.0
+        else:
+            k_line[i] = (closes[i] - window_low) / price_range * 100.0
+    d_line: Series = [None] * len(closes)
+    first_valid = k_period - 1
+    valid_tail = [item for item in k_line[first_valid:] if item is not None]
+    for offset, item in enumerate(sma(valid_tail, d_period)):
+        d_line[first_valid + offset] = item
+    return StochasticResult(k=k_line, d=d_line)
+
+
+def rolling_std(values: Sequence[float], window: int) -> Series:
+    """滚动总体标准差：``result[i] = pstdev(values[i-window+1 .. i])``。
+
+    前 ``window - 1`` 个位置为 None。``window`` 必须大于 1。
+    """
+    if window < 2:
+        raise ValueError("window 必须大于 1")
+    result: Series = [None] * len(values)
+    for i in range(window - 1, len(values)):
+        result[i] = pstdev(values[i - window + 1 : i + 1])
+    return result
+
+
+def zscore(values: Sequence[float], window: int) -> Series:
+    """滚动 Z 分数：``result[i] = (values[i] - 窗口均值) / 窗口总体标准差``。
+
+    窗口标准差为 0（价格完全不变）时返回 0（无偏离）。前 ``window - 1``
+    个位置为 None。``window`` 必须大于 1。
+    """
+    if window < 2:
+        raise ValueError("window 必须大于 1")
+    means = sma(values, window)
+    deviations = rolling_std(values, window)
+    result: Series = [None] * len(values)
+    for i in range(len(values)):
+        mean = means[i]
+        deviation = deviations[i]
+        if mean is None or deviation is None:
+            continue
+        result[i] = 0.0 if deviation == 0.0 else (values[i] - mean) / deviation
+    return result
