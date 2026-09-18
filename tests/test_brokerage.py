@@ -95,12 +95,12 @@ class TestPaperGateway:
 # SDK 适配器：未安装SDK时的行为契约
 # --------------------------------------------------------------------------- #
 class TestSdkAdapters:
-    def test_qmt_gateway_import(self) -> None:
+    def test_qmt_gateway_no_client_returns_false(self, tmp_path) -> None:
+        """无 QMT 客户端：connect() 返回 False（C风格：0=成功），不崩溃。"""
         pytest.importorskip("xtquant", reason="未安装 xtquant（QMT SDK）")
         from quant_demo.brokerage import QMTGateway
-        gw = QMTGateway(qmt_userdata_path="C:/nonexistent", account_id="123")
-        with pytest.raises((ConnectionError, Exception)):
-            gw.connect()  # 无法连接必然失败，但不应崩溃
+        gw = QMTGateway(qmt_userdata_path=str(tmp_path / "qmt"), account_id="123")
+        assert gw.connect() is False
 
     def test_futu_gateway_import(self) -> None:
         pytest.importorskip("futu", reason="未安装 futu-sdk")

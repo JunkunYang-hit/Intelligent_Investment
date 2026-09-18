@@ -16,7 +16,24 @@
 这是开户与授权流程，代码无法替代。适配器代码按官方 SDK 公开接口编写，
 完成授权后即可实际连通；未授权环境下运行会在 `connect()` 处失败并给出明确提示。
 
-## 快速开始（本地模拟，零依赖）
+## 快速开始（端到端演示，真实行情价格）
+
+```bash
+python scripts/broker_demo.py            # 模拟撮合 + 腾讯实时真实盘口价（开箱即用）
+```
+
+演示链路：**真实行情（免账户）→ 股票池五年数据动量选股 → 网关下单 → 成交回报 → 持仓/资金**。
+paper 网关用真实现价撮合；换真实券商只需 `--gateway qmt|futu`，环境未就绪时自动给出诊断清单而不是静默失败。
+
+QMT 环境自检（部署实盘前的检查清单）：
+
+```python
+from quant_demo.brokerage.qmt_gateway import qmt_self_test
+print(qmt_self_test(r"C:\QMT安装目录\userdata_mini"))
+# {'sdk_installed': True, 'client_running': False, 'advice': ['启动并登录 QMT/miniQMT 客户端...']}
+```
+
+## 最小下单示例（本地模拟，零依赖）
 
 ```python
 from datetime import datetime

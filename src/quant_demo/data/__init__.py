@@ -22,6 +22,7 @@ from .selection import (
     screen_symbol,
     screen_universe,
 )
+from .realtime import RealtimeQuote, get_last_price, get_realtime_quotes
 
 __all__ = [
     "CsvDataService",
@@ -40,4 +41,7 @@ __all__ = [
     "momentum_score",
     "screen_symbol",
     "screen_universe",
+    "RealtimeQuote",
+    "get_last_price",
+    "get_realtime_quotes",
 ]
