@@ -8,7 +8,7 @@ from datetime import datetime
 from itertools import groupby
 
 from quant_demo.analytics import calculate_performance
-from quant_demo.models import BacktestResult, Bar, Order, OrderStatus
+from quant_demo.models import BacktestResult, Bar, Order, OrderStatus, Side
 from quant_demo.strategy import Strategy
 from quant_demo.trading import (
     Account,
@@ -31,7 +31,11 @@ class BacktestEngine:
         annual_trading_days: int = 252,
         strategy_name: str | None = None,
         strategy_parameters: Mapping[str, object] | None = None,
+        reserve_cash: bool = False,
+        max_total_weight: float | None = None,
     ) -> None:
+        if max_total_weight is not None and not 0 < max_total_weight <= 1:
+            raise ValueError("组合总仓位上限必须在 (0, 1] 内")
         self.strategy = strategy
         self.account = account
         self.sizer = sizer
@@ -41,6 +45,9 @@ class BacktestEngine:
         self.annual_trading_days = annual_trading_days
         self.strategy_name = strategy_name or type(strategy).__name__
         self.strategy_parameters = dict(strategy_parameters or {})
+        # 默认关闭，保持历史回测和模拟调用方的原有成交结果。
+        self.reserve_cash = reserve_cash
+        self.max_total_weight = max_total_weight
         self._has_run = False
 
     def run(self, bars: list[Bar]) -> BacktestResult:
@@ -51,6 +58,8 @@ class BacktestEngine:
 
         history: dict[str, list[Bar]] = defaultdict(list)
         pending: dict[str, list[Order]] = defaultdict(list)
+        reserved_cash: dict[str, float] = {}
+        pending_exposure: dict[str, float] = {}
         last_prices: dict[str, float] = {}
 
         ordered_bars = sorted(bars, key=lambda item: (item.datetime, item.symbol))
@@ -58,7 +67,13 @@ class BacktestEngine:
             day_bars = list(day_group)
             # 先执行上一交易日产生的订单，杜绝当日收盘信号按当日成交。
             for bar in day_bars:
-                for order in pending.pop(bar.symbol, []):
+                orders = sorted(
+                    pending.pop(bar.symbol, []),
+                    key=lambda item: (item.created_at, item.order_id),
+                )
+                for order in orders:
+                    reserved_cash.pop(order.order_id, None)
+                    pending_exposure.pop(order.order_id, None)
                     trade = self.broker.execute_at_open(order, bar)
                     try:
                         self.account.apply_trade(trade)
@@ -91,8 +106,13 @@ class BacktestEngine:
                 decision = self.risk.check(request, bar.close, self.account)
                 if not decision.passed:
                     self.oms.reject(order, decision.reason)
+                elif (reason := self._constraint_reason(
+                    request, bar, reserved_cash, pending_exposure
+                )) is not None:
+                    self.oms.reject(order, reason)
                 else:
                     pending[bar.symbol].append(order)
+                    self._track_pending(order, request, bar, reserved_cash, pending_exposure)
 
         metrics = calculate_performance(
             self.account.equity_curve, self.account.trades, self.annual_trading_days
@@ -104,6 +124,54 @@ class BacktestEngine:
             orders=list(self.oms.orders),
             metadata=self._build_metadata(ordered_bars),
         )
+
+    def _constraint_reason(
+        self,
+        request,
+        bar: Bar,
+        reserved_cash: dict[str, float],
+        pending_exposure: dict[str, float],
+    ) -> str | None:
+        """检查可选的组合级约束，不改变默认的逐订单风控口径。"""
+
+        gross_value = request.quantity * bar.close
+        if self.reserve_cash and request.side is Side.BUY:
+            estimated_cost = self._estimated_buy_cost(request.quantity, bar.close)
+            available_cash = self.account.cash - sum(reserved_cash.values())
+            if estimated_cost > available_cash + 1e-8:
+                return "待成交订单预占后可用现金不足"
+
+        if self.max_total_weight is not None:
+            pending_value = sum(pending_exposure.values())
+            delta = gross_value if request.side is Side.BUY else -gross_value
+            projected_value = self.account.market_value + pending_value + delta
+            if projected_value > self.account.total_equity * self.max_total_weight + 1e-8:
+                return "组合总仓位超过限制"
+        return None
+
+    def _track_pending(
+        self,
+        order: Order,
+        request,
+        bar: Bar,
+        reserved_cash: dict[str, float],
+        pending_exposure: dict[str, float],
+    ) -> None:
+        gross_value = request.quantity * bar.close
+        if self.reserve_cash and request.side is Side.BUY:
+            reserved_cash[order.order_id] = self._estimated_buy_cost(
+                request.quantity, bar.close
+            )
+        if self.max_total_weight is not None:
+            pending_exposure[order.order_id] = (
+                gross_value if request.side is Side.BUY else -gross_value
+            )
+
+    def _estimated_buy_cost(self, quantity: int, close: float) -> float:
+        price = close * (1 + self.broker.slippage_bps / 10_000)
+        amount = price * quantity
+        commission = max(self.broker.minimum_commission, amount * self.broker.commission_rate)
+        return amount + commission
 
     @staticmethod
     def _validate_bars(bars: list[Bar]) -> None:

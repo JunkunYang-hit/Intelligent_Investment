@@ -87,6 +87,8 @@ def build_backtest_engine(config: Mapping[str, object]) -> BacktestEngine:
         annual_trading_days=_as_int(backtest, "annual_trading_days"),
         strategy_name=selection.name,
         strategy_parameters=selection.parameters,
+        reserve_cash=_as_bool(backtest, "reserve_cash", False),
+        max_total_weight=_as_optional_float(risk, "max_total_weight"),
     )
 
 
@@ -177,6 +179,20 @@ def _as_float(config: Mapping[str, object], key: str, default: float | None = No
         return float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"配置项 {key} 必须是数字") from exc
+
+
+def _as_optional_float(config: Mapping[str, object], key: str) -> float | None:
+    value = config.get(key)
+    if value is None:
+        return None
+    return _as_float(config, key)
+
+
+def _as_bool(config: Mapping[str, object], key: str, default: bool) -> bool:
+    value = config.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"配置项 {key} 必须是布尔值")
+    return value
 
 
 def _reject_unknown_keys(config: Mapping[str, object], allowed: set[str]) -> None:

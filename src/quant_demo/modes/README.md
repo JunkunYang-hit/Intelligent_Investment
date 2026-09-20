@@ -35,6 +35,11 @@ C 模块不负责：
 - 定义绩效指标公式；
 - 实现 Web 页面、权限、任务调度或实盘网关。
 
+当前 C 模块已经可以通过命令行和 Web 回测入口运行。命令行入口保留
+`main.build_engine(config)` 兼容接口，但实际由本模块的
+`build_backtest_engine(config)` 负责组装组件；Web 的 `/api/backtest` 也使用
+同一个 C 工厂。这样策略选择、账户初始资金、费用和风控参数不会在入口层重复实现。
+
 ## 2. Files
 
 ```text
@@ -126,6 +131,29 @@ result = engine.run(bars)
 - BacktestEngine。
 
 不要复用已经运行过的 Engine。
+
+### 3.4 Simulation construction
+
+持续模拟模式按 Bar 推进，不接收完整历史列表：
+
+```python
+from quant_demo.modes import SimulationEngine
+
+engine = SimulationEngine(
+    strategy=strategy,
+    account=account,
+    sizer=sizer,
+    risk=risk,
+    oms=oms,
+    broker=broker,
+)
+snapshot = engine.on_bar(bar)
+```
+
+`SimulationEngine.on_bar()` 每次处理一根已完成的 Bar，先撮合该标的此前产生的
+待成交订单，再更新收盘估值、追加 history、调用策略并返回账户快照。它与历史
+回测共享 Strategy、Sizer、Risk、OMS、Broker 和 Account 的交易规则，但不会返回
+完整的 `BacktestResult`。
 
 ## 4. Strategy Configuration
 
@@ -246,7 +274,64 @@ strategy_parameters    已解析且补齐默认值的算法参数
 - 最后一根 Bar 后产生且没有下一根行情的订单保持 `CREATED`；
 - 一个 `BacktestEngine` 只能运行一次，再次调用抛出 `RuntimeError`。
 
-## 9. Testing
+### 8.1 Optional multi-symbol portfolio constraints
+
+为了兼容既有单标的和多标的结果，以下组合约束默认关闭，只有在配置中显式开启
+才会生效：
+
+```json
+{
+  "backtest": {
+    "reserve_cash": true
+  },
+  "risk": {
+    "max_total_weight": 0.8
+  }
+}
+```
+
+- `reserve_cash=true`：创建买单时按当前收盘价、滑点和佣金估算成本，并从后续
+  待成交订单的可用现金中预占；资金不足的订单在创建阶段标记为 `REJECTED`。
+- `max_total_weight`：把当前持仓和已接受的待成交订单一起计入组合敞口，超过
+  上限的订单标记为 `REJECTED`。取值范围为 `(0, 1]`。
+- 同一标的的待成交订单按 `(created_at, order_id)` 排序；日 Bar 本身按
+  `(datetime, symbol)` 排序，因此输入文件顺序不会影响成交顺序。
+
+默认配置不设置这两个字段，仍采用原有逐订单风控和账户过账规则。持续模拟
+模式目前不自动启用这些回测专用约束，以确保已有模拟结果保持不变。
+
+## 9. End-to-end workflow
+
+一次历史回测的完整数据流如下：
+
+```text
+CsvDataService / other MarketDataService
+        -> list[Bar]
+        -> build_backtest_engine(config)
+        -> BacktestEngine.run(bars)
+        -> Strategy signal
+        -> TargetWeightSizer
+        -> RiskManager
+        -> OMS
+        -> BrokerSimulator (next Bar open)
+        -> Account.apply_trade / mark_to_market
+        -> calculate_performance
+        -> BacktestResult
+```
+
+当前结果可以被 CLI、Web 或测试调用方消费：
+
+- CLI 输出 `result.metrics` 的 JSON；
+- Web 回测额外生成买入并持有基准曲线、数据快照 ID 和异常提示；
+- `BacktestResult` 保留净值、成交、订单和 metadata，便于审计和复现；
+- 模拟模式逐 Bar 返回账户、订单和成交快照，不改变历史回测结果。
+
+当前配置仍默认使用 `510300.SH` 的 A 股/ETF 日线数据。数据模块虽然已经提供
+13 只 A 股及港美股数据和动量排名函数，但这些股票池和动态选股规则尚未自动
+接入 C 的回测配置；使用它们前需要明确多标的资金、交易单位、市场币种和调仓
+时序规则。
+
+## 10. Testing
 
 运行全部测试：
 
@@ -265,15 +350,22 @@ C 模块重点验证：
 - 未知策略和拼错参数快速失败；
 - 策略名称和参数进入 metadata；
 - 每次工厂调用创建独立组件。
+- 多标的待成交订单的确定性顺序；
+- 可选现金预占和组合总仓位限制；
+- 多标的资金不足时的拒单行为；
+- CLI、Web 回测和模拟模式的兼容性。
 
-## 10. Current Limitations
+## 11. Current Limitations
 
-- `main.py` 仍使用原有 E 层 `build_engine()`，尚未切换到本模块的 `build_backtest_engine()`；
 - 没有严格 A 股 T+1 可卖数量；
-- 没有多订单资金预占；
+- 多订单资金预占和组合总仓位上限目前是可选项，默认关闭；
 - 没有停牌、涨跌停、成交量限制和部分成交；
 - 没有限价单、止损单和订单有效期；
 - 没有完整 SignalEvent、批量参数实验和结果持久化；
 - 没有策略生命周期回调。
+- 尚未把 `data.selection.momentum_rank()` 接入动态调仓回测；
+- 账户仍是单一现金余额，尚不支持港股/美股的多币种和汇率；
+- `lot_size`、佣金、印花税和滑点仍以单一配置应用于整次回测；
+- 尚未实现跨市场交易日历、时区和市场特定费用模型。
 
 这些内容涉及其他模块或共享模型，应在团队确认接口后单独实施。
