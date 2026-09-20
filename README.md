@@ -69,12 +69,6 @@ git clone https://github.com/JunkunYang-hit/Intelligent_Investment.git
 cd Intelligent_Investment
 ```
 
-如果已经克隆：
-
-```powershell
-cd Q:\project\Intelligent_Investment
-git pull
-```
 
 ### 3. 创建独立 Python 环境
 
