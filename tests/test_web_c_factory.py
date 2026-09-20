@@ -39,6 +39,15 @@ def test_request_config_replaces_strategy_specific_base_fields() -> None:
     assert config["backtest"]["initial_cash"] == 500_000
 
 
+def test_request_config_uses_symbol_specific_lot_size() -> None:
+    payload = request()
+    payload["symbol"] = "688981.SH"
+
+    config = build_request_config(application().config, payload)
+
+    assert config["market"]["lot_size"] == 200
+
+
 def test_backtest_factory_errors_are_returned_as_api_errors() -> None:
     invalid = request()
     invalid["strategy"] = "unknown"

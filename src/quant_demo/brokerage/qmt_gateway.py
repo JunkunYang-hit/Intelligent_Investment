@@ -245,12 +245,16 @@ def qmt_self_test(qmt_userdata_path: str | None = None) -> dict:
         report["path_exists"] = os.path.isdir(qmt_userdata_path)
         if not report["path_exists"]:
             report["advice"].append(f"路径不存在: {qmt_userdata_path}（应为QMT安装目录下 userdata_mini）")
+            return report
+    else:
+        # 没有真实 userdata_mini 路径时无法判断客户端是否运行；直接给出
+        # 可操作提示，避免 SDK 在当前目录创建大型 down_queue 临时文件。
+        report["advice"].append("请提供 QMT/miniQMT 的 userdata_mini 路径")
+        return report
     try:
         from xtquant.xttrader import XtQuantTrader
-        trader = XtQuantTrader(qmt_userdata_path or ".", 991901)
+        trader = XtQuantTrader(qmt_userdata_path, 991901)
         trader.start()
-        # xtquant 返回 0 表示成功；connect 成功不代表已登录有效账号，
-        # 真正可用性以 query_stock_asset 是否返回资产为准
         report["client_running"] = trader.connect() == 0
         trader.stop()
     except Exception as e:

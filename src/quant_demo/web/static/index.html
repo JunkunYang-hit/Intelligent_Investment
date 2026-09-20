@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="light">
   <title>NEXUS Quant Lab</title>
   <!-- 使用相对路径：即使误用文件方式预览，也能加载页面样式。 -->
   <link rel="stylesheet" href="styles.css">
@@ -19,12 +19,14 @@
       <nav aria-label="主导航">
         <button class="nav-item active" data-view="overview"><span>01</span>总览面板</button>
         <button class="nav-item" data-view="backtest"><span>02</span>策略回测</button>
-        <button class="nav-item" data-view="simulation"><span>03</span>模拟运行</button>
-        <button class="nav-item" data-view="activity"><span>04</span>交易记录</button>
+        <button class="nav-item" data-view="broker"><span>03</span>模拟券商</button>
+        <button class="nav-item" data-view="ai"><span>04</span>AI 分析</button>
+        <button class="nav-item" data-view="history"><span>05</span>回测历史</button>
+        <button class="nav-item" data-view="activity"><span>06</span>交易记录</button>
       </nav>
       <div class="system-card">
         <div class="signal"><b></b> CORE ONLINE</div>
-        <dl><div><dt>数据源</dt><dd id="side-data">--</dd></div><div><dt>频率</dt><dd id="side-frequency">--</dd></div></dl>
+        <dl><div><dt>回测数据</dt><dd id="side-backtest-data">--</dd></div><div><dt>数据频率</dt><dd id="side-frequency">--</dd></div><div><dt>下单行情</dt><dd id="side-broker-data">--</dd></div></dl>
       </div>
       <p class="sidebar-foot">EDUCATIONAL SIMULATION<br>NO LIVE EXECUTION</p>
     </aside>
@@ -44,10 +46,9 @@
             <div class="orb" aria-hidden="true"><span></span><i></i><b>Q</b></div>
           </article>
           <article class="panel integrity">
-            <div class="panel-head"><div><p class="eyebrow">DATA INTEGRITY</p><h3>数据可信度</h3></div><span class="badge cyan">VERIFIED</span></div>
-            <div class="integrity-score"><strong id="data-score">--</strong><span>/ 100</span></div>
-            <div class="meter"><i id="data-meter"></i></div>
-            <dl class="compact-list"><div><dt>有效 Bar</dt><dd id="bar-count">--</dd></div><div><dt>覆盖区间</dt><dd id="date-range">--</dd></div><div><dt>快照验证</dt><dd>运行时生成</dd></div></dl>
+            <div class="panel-head"><div><p class="eyebrow">DATA SNAPSHOT</p><h3>历史数据状态</h3></div><span class="badge cyan">LOADED</span></div>
+            <div class="integrity-score"><strong id="symbol-count">--</strong><span> 个标的</span></div>
+            <dl class="compact-list"><div><dt>有效日 K</dt><dd id="bar-count">--</dd></div><div><dt>覆盖区间</dt><dd id="date-range">--</dd></div><div><dt>待复核异常</dt><dd id="data-warning-count">--</dd></div></dl>
           </article>
         </div>
         <div class="metric-grid" id="overview-metrics">
@@ -69,53 +70,111 @@
             <label>交易标的<select name="symbol" id="symbol"></select></label>
             <div class="field-pair"><label>开始日期<input type="date" name="start" id="start"></label><label>结束日期<input type="date" name="end" id="end"></label></div>
             <label>策略模型<select name="strategy" id="strategy"></select></label>
+            <div class="rule-box strategy-help"><span>策略说明</span><strong id="strategy-description">--</strong></div>
             <div id="strategy-fields" class="strategy-fields"></div>
-            <div class="field-pair"><label>初始资金（¥）<input type="number" name="initial_cash" id="initial-cash" min="1" step="10000"></label><label>目标仓位（%）<input type="number" name="target_weight" id="target-weight" min="1" max="100" step="1"></label></div>
+            <div class="field-pair"><label>初始资金（¥）<input type="number" name="initial_cash" id="initial-cash" min="10000" step="10000"></label><label>目标仓位（%）<input type="number" name="target_weight" id="target-weight" min="1" max="100" step="1"></label></div>
             <div class="rule-box"><span>执行规则</span><strong id="execution-rule">--</strong></div>
-            <button class="primary wide" type="submit" id="run-button"><span>运行完整回测</span><b>RUN ↗</b></button>
+            <div class="rule-box"><span>回测数据（固定历史快照）</span><strong id="backtest-data-rule">--</strong></div>
+            <button class="primary wide" type="submit" id="run-button"><span>一键快速回测</span><b>RUN ↗</b></button>
           </form>
 
           <div class="results-stack">
+            <div class="results-heading">
+              <div><p class="eyebrow">RETURN &amp; RISK</p><h3>收益与风险指标</h3></div>
+              <p>收益率反映盈利能力，最大回撤反映历史最差下跌幅度。</p>
+            </div>
             <div class="metric-grid result-metrics" id="result-metrics">
-              <article class="metric panel"><p>总收益率</p><strong>—</strong><small>策略净值变化</small></article>
-              <article class="metric panel"><p>最大回撤</p><strong>—</strong><small>越低越稳健</small></article>
+              <article class="metric panel"><p>总收益率</p><strong id="result-total-return">—</strong><small>策略净值变化</small></article>
+              <article class="metric panel risk-metric"><p>最大回撤</p><strong id="result-max-drawdown">—</strong><small>历史峰值后的最大跌幅</small></article>
               <article class="metric panel"><p>夏普比率</p><strong>—</strong><small>无风险利率为 0</small></article>
               <article class="metric panel"><p>胜率</p><strong>—</strong><small>完整持仓周期</small></article>
             </div>
             <article class="panel chart-panel">
-              <div class="panel-head"><div><p class="eyebrow">EQUITY CURVE</p><h3>策略净值 vs 买入持有</h3></div><div class="legend"><span><i class="strategy-dot"></i>策略</span><span><i class="benchmark-dot"></i>基准</span></div></div>
+              <div class="panel-head"><div><p class="eyebrow">EQUITY CURVE</p><h3>策略净值 vs 买入持有</h3></div><div class="legend"><span><i class="strategy-dot"></i>策略</span><span><i class="benchmark-dot"></i><b id="benchmark-label">买入持有</b></span></div></div>
               <div class="chart-wrap"><svg id="equity-chart" viewBox="0 0 900 330" role="img" aria-label="策略与基准净值曲线"><text x="450" y="165" text-anchor="middle">运行回测后显示净值曲线</text></svg></div>
               <div class="chart-meta"><span id="result-period">尚未运行</span><span id="snapshot-id">SNAPSHOT —</span></div>
+              <div class="result-detail" id="result-detail">运行后显示最终资产、年化收益、基准收益、费用与数据检查结果</div>
             </article>
           </div>
         </div>
       </section>
 
-      <section class="view" id="view-simulation">
-        <div class="simulation-grid">
-          <article class="panel sim-console">
-            <div class="panel-head"><div><p class="eyebrow">MARKET REPLAY</p><h3>逐日模拟运行</h3></div><span class="badge" id="sim-status">IDLE</span></div>
-            <p class="section-copy">使用与回测相同的策略、风控、OMS、撮合和账户模块，逐根推送真实日 K。</p>
-            <div class="sim-value"><span>当前日期</span><strong id="sim-date">—</strong><small id="sim-price">等待启动</small></div>
-            <div class="progress"><i id="sim-progress"></i></div><p class="progress-copy" id="sim-progress-copy">0 / 0 BAR</p>
-            <div class="button-row"><button class="primary" id="sim-start">启动回放</button><button class="secondary" id="sim-pause" disabled>暂停</button><button class="secondary" id="sim-step" disabled>单步</button></div>
-          </article>
-          <div class="sim-account">
-            <div class="metric-grid two" id="sim-metrics">
-              <article class="metric panel"><p>账户总资产</p><strong>—</strong><small>CASH + MARKET VALUE</small></article>
+      <section class="view" id="view-broker">
+        <div class="broker-grid">
+          <div class="broker-controls">
+          <form class="panel controls broker-connect" id="broker-connect-form">
+            <div class="panel-head"><div><p class="eyebrow">BROKER CONNECTION</p><h3>选择模拟券商</h3></div><span class="badge">仅模拟盘</span></div>
+            <label>券商通道<select name="gateway" id="broker-gateway"><option value="paper">本地 PaperBroker（免账户）</option><option value="futu">富途 OpenD 官方模拟盘</option></select></label>
+            <div id="futu-fields" class="hidden">
+              <div class="field-pair"><label>OpenD 主机<input name="host" value="127.0.0.1" maxlength="255"></label><label>OpenD 端口<input name="port" type="number" value="11111" min="1" max="65535"></label></div>
+              <div class="field-pair"><label>模拟市场<select name="market"><option value="HK">港股 HK</option><option value="US">美股 US</option></select></label><label>模拟账户 ID（可选）<input name="account_id" inputmode="numeric" placeholder="留空则自动选择"></label></div>
+            </div>
+            <p class="privacy-note">连接信息只保存在当前服务内存，不写入文件。富途模式需要先启动并登录 OpenD；网页不会收集登录密码。</p>
+            <button class="secondary wide" type="submit" id="broker-connect"><span>连接所选模拟券商</span><b>CONNECT</b></button>
+          </form>
+          <form class="panel controls broker-order" id="broker-form">
+            <div class="panel-head"><div><p class="eyebrow">SIMULATION BROKER</p><h3 id="broker-heading">本地模拟券商</h3></div><span class="badge" id="broker-status">读取中</span></div>
+            <p class="section-copy" id="broker-description">当前使用 PaperBroker 本地模拟账户。仅在 A 股交易日的 09:30–11:30、13:00–15:00 且联网行情为当天时允许成交。<br>交易状态：<strong id="broker-session-message">正在判断…</strong><br>行情来源：<strong id="broker-market-source">正在读取…</strong></p>
+            <label>交易标的<input name="symbol" id="broker-symbol" list="broker-symbol-list" value="510300.SH" autocomplete="off"><datalist id="broker-symbol-list"></datalist></label>
+            <div class="field-pair"><label>买卖方向<select name="side"><option value="BUY">买入 BUY</option><option value="SELL">卖出 SELL</option></select></label><label>订单类型<select name="order_type" id="broker-order-type"><option value="market">市价单（最新收盘价）</option><option value="limit">限价单</option></select></label></div>
+            <div class="field-pair"><label id="broker-quantity-label">数量（100 股整数倍）<input name="quantity" id="broker-quantity" type="number" value="100" min="100" step="100"></label><label>限价<input name="price" id="broker-price" type="number" min="0.001" step="0.001" disabled placeholder="市价单无需填写"></label></div>
+            <button class="primary wide" type="submit" id="broker-submit"><span>提交模拟订单</span><b>ORDER ↗</b></button>
+            <button class="secondary wide broker-reset" type="button" id="broker-refresh">刷新券商账户与行情</button>
+            <button class="secondary wide broker-reset" type="button" id="broker-reset">重置为 100 万模拟资金</button>
+          </form>
+          </div>
+          <div class="results-stack">
+            <div class="metric-grid three" id="broker-metrics">
+              <article class="metric panel"><p>账户总资产</p><strong>—</strong><small>TOTAL EQUITY</small></article>
               <article class="metric panel"><p>可用现金</p><strong>—</strong><small>AVAILABLE CASH</small></article>
               <article class="metric panel"><p>持仓市值</p><strong>—</strong><small>MARKET VALUE</small></article>
-              <article class="metric panel"><p>累计费用</p><strong>—</strong><small>COMMISSION + TAX</small></article>
             </div>
+            <article class="panel broker-table"><div class="panel-head"><div><p class="eyebrow">POSITIONS</p><h3>当前持仓</h3></div><span class="muted">即时模拟成交</span></div><div class="table-wrap"><table><thead><tr><th>标的</th><th>数量</th><th>平均成本</th><th>最新价</th><th>市值</th><th>浮动盈亏</th></tr></thead><tbody id="broker-positions"><tr><td class="empty" colspan="6">暂无持仓</td></tr></tbody></table></div></article>
           </div>
         </div>
-        <article class="panel"><div class="panel-head"><div><p class="eyebrow">LIVE EVENT STREAM</p><h3>最新订单与成交</h3></div><span class="muted">最近 20 条</span></div><div class="event-stream" id="sim-events"><p class="empty">启动模拟后显示事件</p></div></article>
+      </section>
+
+      <section class="view" id="view-ai">
+        <div class="ai-grid">
+          <form class="panel controls" id="ai-form">
+            <div class="panel-head"><div><p class="eyebrow">DEEPSEEK ANALYST</p><h3>AI 标的分析</h3></div><span class="badge cyan">DEEPSEEK</span></div>
+            <label>目标标的<select name="symbol" id="ai-symbol"></select></label>
+            <label>DeepSeek API Key<input type="password" name="api_key" id="ai-api-key" autocomplete="off" placeholder="sk-..." required></label>
+            <p class="privacy-note">Key 仅随本次请求发送给本机后端和 DeepSeek，不写入配置、历史记录或浏览器存储。</p>
+            <label>你想了解什么？<textarea name="question" id="ai-question" maxlength="2000" required placeholder="例如：结合近期趋势和风险，这个标的是否适合低频双均线策略？"></textarea></label>
+            <button class="primary wide" type="submit" id="ai-submit"><span>开始分析</span><b>ASK ↗</b></button>
+          </form>
+          <div class="results-stack">
+            <article class="panel ai-market">
+              <div class="panel-head"><div><p class="eyebrow">MARKET CONTEXT</p><h3>本次分析数据</h3></div><span class="badge" id="ai-data-source">等待分析</span></div>
+              <div class="market-strip"><div><span>行情时间</span><strong id="ai-quote-time">—</strong></div><div><span>最新价格</span><strong id="ai-price">—</strong></div><div><span>20 日涨跌</span><strong id="ai-return">—</strong></div><div><span>60 日波动</span><strong id="ai-volatility">—</strong></div></div>
+            </article>
+            <article class="panel ai-answer-panel">
+              <div class="panel-head"><div><p class="eyebrow">ANALYSIS RESULT</p><h3>DeepSeek 分析结果</h3></div><span class="muted" id="ai-model">尚未调用</span></div>
+              <div id="ai-answer" class="ai-answer"><p class="empty">选择标的、输入 API Key 和问题后开始分析</p></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-history">
+        <article class="panel activity-panel">
+          <div class="panel-head"><div><p class="eyebrow">SAVED BACKTESTS</p><h3>已保存的回测历史</h3></div><div class="history-actions"><span class="muted" id="history-location">本地持久化</span><button class="secondary compact" id="history-refresh">刷新</button></div></div>
+          <p class="section-copy">每次成功回测都会自动保存。点击“查看”可恢复当时的指标、净值曲线、订单和成交记录。</p>
+          <div class="table-wrap"><table><thead><tr><th>运行时间</th><th>标的</th><th>策略</th><th>回测区间</th><th>总收益率</th><th>最大回撤</th><th>成交数</th><th>操作</th></tr></thead><tbody id="history-body"><tr><td class="empty" colspan="8">正在读取回测历史…</td></tr></tbody></table></div>
+        </article>
+        <article class="panel activity-panel history-detail hidden" id="history-detail">
+          <div class="panel-head"><div><p class="eyebrow">BACKTEST RECORDS</p><h3 id="history-detail-title">回测交易明细</h3></div><div class="segmented"><button class="active" data-history-table="trades">成交</button><button data-history-table="orders">订单</button></div></div>
+          <div class="table-wrap"><table><thead id="history-detail-head"></thead><tbody id="history-detail-body"></tbody></table></div>
+          <div class="pagination"><button class="secondary compact" id="history-prev">上一页</button><span id="history-page">第 1 / 1 页</span><button class="secondary compact" id="history-next">下一页</button></div>
+        </article>
       </section>
 
       <section class="view" id="view-activity">
         <article class="panel activity-panel">
-          <div class="panel-head"><div><p class="eyebrow">AUDIT TRAIL</p><h3>订单与成交记录</h3></div><div class="segmented"><button class="active" data-table="trades">成交</button><button data-table="orders">订单</button></div></div>
-          <div class="table-wrap"><table><thead id="activity-head"></thead><tbody id="activity-body"><tr><td class="empty" colspan="8">完成一次回测后显示可审计记录</td></tr></tbody></table></div>
+          <div class="panel-head"><div><p class="eyebrow">BROKER AUDIT TRAIL</p><h3>券商交易记录</h3></div><div class="segmented"><button class="active" data-broker-table="filled">已成交</button><button data-broker-table="orders">全部订单</button></div></div>
+          <p class="section-copy">展示当前券商连接会话提交的订单；可在模拟券商页面切换 PaperBroker 或富途官方模拟盘。服务重启后会话列表清空，回测成交请到“回测历史”查看。</p>
+          <div class="table-wrap"><table><thead id="activity-head"></thead><tbody id="activity-body"><tr><td class="empty" colspan="7">当前券商会话还没有订单</td></tr></tbody></table></div>
         </article>
       </section>
     </main>

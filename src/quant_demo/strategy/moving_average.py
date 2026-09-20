@@ -6,7 +6,6 @@ from collections.abc import Mapping, Sequence
 
 from quant_demo.models import Bar, Side
 from quant_demo.strategy.base import Strategy
-from quant_demo.strategy.indicators import sma
 
 
 class DualMovingAverageStrategy(Strategy):
@@ -29,11 +28,11 @@ class DualMovingAverageStrategy(Strategy):
         closes = [item.close for item in history.get(bar.symbol, ())]
         if len(closes) < self.long_window + 1:
             return None
-        short_ma = sma(closes, self.short_window)
-        long_ma = sma(closes, self.long_window)
-        short_previous, short_now = short_ma[-2], short_ma[-1]
-        long_previous, long_now = long_ma[-2], long_ma[-1]
-        # 长度检查已保证这四个值不为 None。
+        # on_bar 只需要当前与上一根的均线；避免每推进一根 Bar 都重算整段序列。
+        short_previous = sum(closes[-self.short_window - 1 : -1]) / self.short_window
+        short_now = sum(closes[-self.short_window :]) / self.short_window
+        long_previous = sum(closes[-self.long_window - 1 : -1]) / self.long_window
+        long_now = sum(closes[-self.long_window :]) / self.long_window
         if short_previous <= long_previous and short_now > long_now:
             return Side.BUY
         if short_previous >= long_previous and short_now < long_now:

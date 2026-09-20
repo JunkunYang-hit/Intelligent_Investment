@@ -25,6 +25,9 @@ class TargetWeightSizer:
         if side is Side.BUY:
             target_value = account.total_equity * self.target_weight
             missing_value = max(0.0, target_value - position_value)
+            # 满仓目标仍需预留下一交易日跳空、滑点和手续费空间，否则按信号日
+            # 收盘价算出的 100% 订单很容易在次日开盘因现金差几百元而整单拒绝。
+            missing_value = min(missing_value, account.cash * 0.99)
             quantity = int(missing_value / price / self.lot_size) * self.lot_size
         else:
             quantity = position_quantity

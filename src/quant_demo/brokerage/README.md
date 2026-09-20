@@ -19,7 +19,7 @@
 ## 快速开始（端到端演示，真实行情价格）
 
 ```bash
-python scripts/broker_demo.py            # 模拟撮合 + 腾讯实时真实盘口价（开箱即用）
+python scripts/broker_demo.py            # 模拟撮合 + 腾讯联网行情快照（按需调用）
 ```
 
 演示链路：**真实行情（免账户）→ 股票池五年数据动量选股 → 网关下单 → 成交回报 → 持仓/资金**。
@@ -57,7 +57,7 @@ print(gw.query_cash())
 
 1. 注册富途牛牛，开通证券账户（港股/美股需在 App 内签署市场协议）；
 2. 电脑端下载 **OpenD** 网关程序并登录（默认监听 `127.0.0.1:11111`）；
-3. 安装 SDK：`pip install futu-api`；
+3. 安装 SDK：`pip install -e ".[dev,futu]"`；
 4. 模拟盘演示（无需真实资金）：
 
 ```python

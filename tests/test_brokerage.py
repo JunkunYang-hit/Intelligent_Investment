@@ -114,9 +114,10 @@ class TestSdkAdapters:
             FutuGateway(market="SH")
 
     def test_futu_code_mapping(self) -> None:
-        from quant_demo.brokerage.futu_gateway import to_futu_code
+        from quant_demo.brokerage.futu_gateway import from_futu_code, to_futu_code
         assert to_futu_code("0700.HK") == "HK.0700"
         assert to_futu_code("AAPL.US") == "US.AAPL"
         assert to_futu_code("600000.SH") == "SH.600000"
+        assert from_futu_code("US.AAPL") == "AAPL.US"
         with pytest.raises(ValueError):
             to_futu_code("600000.TW")

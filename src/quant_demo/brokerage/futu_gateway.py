@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import socket
 from datetime import datetime
 
 from quant_demo.models import Order, OrderRequest, OrderStatus, Position, Side
@@ -35,6 +36,12 @@ def to_futu_code(symbol: str) -> str:
     raise ValueError(f"无法识别的代码: {symbol}")
 
 
+def from_futu_code(symbol: str) -> str:
+    """富途代码转回系统内部格式，例如 US.AAPL -> AAPL.US。"""
+    market, code = symbol.split(".", 1)
+    return f"{code}.{market}"
+
+
 class FutuGateway(BrokerGateway):
     """对接富途 OpenD 的交易网关。market: 'HK' | 'US'。"""
 
@@ -47,6 +54,7 @@ class FutuGateway(BrokerGateway):
         port: int = 11111,
         simulate: bool = True,
         unlock_key: str | None = None,
+        account_id: str | None = None,
     ) -> None:
         if market not in ("HK", "US"):
             raise ValueError("market 仅支持 'HK' 或 'US'")
@@ -55,6 +63,7 @@ class FutuGateway(BrokerGateway):
         self._port = port
         self._simulate = simulate
         self._unlock_key = unlock_key
+        self._account_id = int(account_id) if account_id else None
         self._ctx = None
         self._trd_env = None
         self._trd_side_mod = None
@@ -63,19 +72,51 @@ class FutuGateway(BrokerGateway):
     def connect(self) -> bool:
         import futu as ft
 
-        ctx_cls = ft.OpenHKTradeContext if self._market == "HK" else ft.OpenUSTradeContext
-        self._ctx = ctx_cls(host=self._host, port=self._port)
-        ret, _ = self._ctx.get_acc_list()
+        # OpenSecTradeContext 在端口不可用时会长时间重试。先做快速探测，
+        # 让未启动 OpenD 的开发/演示环境立即得到 False。
+        try:
+            with socket.create_connection((self._host, self._port), timeout=0.8):
+                pass
+        except OSError:
+            return False
+
+        # futu-api 10.x 统一为 OpenSecTradeContext；旧版仍保留市场专用类。
+        legacy_name = "OpenHKTradeContext" if self._market == "HK" else "OpenUSTradeContext"
+        ctx_cls = getattr(ft, legacy_name, None)
+        if ctx_cls is not None:
+            self._ctx = ctx_cls(host=self._host, port=self._port)
+        else:
+            market = ft.TrdMarket.HK if self._market == "HK" else ft.TrdMarket.US
+            self._ctx = ft.OpenSecTradeContext(
+                filter_trdmarket=market, host=self._host, port=self._port
+            )
+        ret, accounts = self._ctx.get_acc_list()
         if ret != 0:
             return False
         self._trd_env = ft.TrdEnv.SIMULATE if self._simulate else ft.TrdEnv.REAL
         self._ft = ft
+        if self._account_id is None and accounts is not None and len(accounts) > 0:
+            matching = accounts
+            if "trd_env" in accounts.columns:
+                expected = "SIMULATE" if self._simulate else "REAL"
+                filtered = accounts[accounts["trd_env"].astype(str).str.endswith(expected)]
+                if len(filtered) > 0:
+                    matching = filtered
+            if "acc_id" in matching.columns:
+                self._account_id = int(matching.iloc[0]["acc_id"])
         if not self._simulate and self._unlock_key:
             # 实盘交易必须先解锁（在 OpenD 端配置交易密码）
             r, _ = self._ctx.unlock_trade(self._unlock_key)
             if r != 0:
                 raise PermissionError("交易解锁失败，无法进入实盘模式")
         return True
+
+    def _account_kwargs(self) -> dict[str, object]:
+        """返回下单和查询共用的交易环境、账户编号参数。"""
+        values: dict[str, object] = {"trd_env": self._trd_env}
+        if self._account_id is not None:
+            values["acc_id"] = self._account_id
+        return values
 
     def disconnect(self) -> None:
         if self._ctx is not None:
@@ -109,7 +150,7 @@ class FutuGateway(BrokerGateway):
             code=code,
             trd_side=trd_side,
             order_type=order_type_map[order_type],
-            trd_env=self._trd_env,
+            **self._account_kwargs(),
         )
         if ret != 0:
             raise RuntimeError(f"富途下单失败: {data}")
@@ -122,15 +163,16 @@ class FutuGateway(BrokerGateway):
             order_id=broker_order_id,
             qty=0,
             price=0,
-            trd_env=self._trd_env,
+            **self._account_kwargs(),
         )
         return ret == 0
 
     # ---- 查询 -------------------------------------------------------------- #
     def query_order(self, broker_order_id: str) -> Order | None:
         self._ensure_connected()
-        ret, data = self._ctx.order_list(
-            order_id=broker_order_id, trd_env=self._trd_env, refresh_cache=True
+        query = getattr(self._ctx, "order_list_query", None) or self._ctx.order_list
+        ret, data = query(
+            order_id=broker_order_id, refresh_cache=True, **self._account_kwargs()
         )
         if ret != 0 or data is None or len(data) == 0:
             return None
@@ -150,7 +192,7 @@ class FutuGateway(BrokerGateway):
         }
         return Order(
             order_id=broker_order_id,
-            symbol=row["code"],
+            symbol=from_futu_code(str(row["code"])),
             side=Side.BUY if str(row["trd_side"]).endswith("BUY") else Side.SELL,
             quantity=int(row["qty"]),
             created_at=datetime.now(),
@@ -160,7 +202,8 @@ class FutuGateway(BrokerGateway):
 
     def query_positions(self) -> list[Position]:
         self._ensure_connected()
-        ret, data = self._ctx.position_list(trd_env=self._trd_env)
+        query = getattr(self._ctx, "position_list_query", None) or self._ctx.position_list
+        ret, data = query(**self._account_kwargs())
         if ret != 0:
             raise ConnectionError(f"查询持仓失败: {data}")
         result: list[Position] = []
@@ -170,7 +213,7 @@ class FutuGateway(BrokerGateway):
                 continue
             result.append(
                 Position(
-                    symbol=str(row["code"]),
+                    symbol=from_futu_code(str(row["code"])),
                     quantity=qty,
                     average_cost=float(row["cost_price"]) or 0.0,
                     last_price=float(row["cur_price"]) or 0.0,
@@ -180,7 +223,11 @@ class FutuGateway(BrokerGateway):
 
     def query_cash(self) -> float:
         self._ensure_connected()
-        ret, data = self._ctx.accinfo_get(trd_env=self._trd_env, currency="HKD" if self._market == "HK" else "USD")
+        query = getattr(self._ctx, "accinfo_query", None) or self._ctx.accinfo_get
+        ret, data = query(
+            currency="HKD" if self._market == "HK" else "USD",
+            **self._account_kwargs(),
+        )
         if ret != 0:
             raise ConnectionError(f"查询资产失败: {data}")
         return float(data.iloc[0]["cash"])

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from statistics import pstdev
 
 from quant_demo.models import Bar, Side
 from quant_demo.strategy.base import Strategy
-from quant_demo.strategy.indicators import bollinger_bands
 
 
 class BollingerBandsStrategy(Strategy):
@@ -33,11 +33,18 @@ class BollingerBandsStrategy(Strategy):
         closes = [item.close for item in history.get(bar.symbol, ())]
         if len(closes) < self.period + 1:
             return None
-        bands = bollinger_bands(closes, self.period, self.std_multiplier)
-        previous_lower, current_lower = bands.lower[-2], bands.lower[-1]
-        previous_upper, current_upper = bands.upper[-2], bands.upper[-1]
-        if None in (previous_lower, current_lower, previous_upper, current_upper):
-            return None
+        # 只计算用于本次穿越判断的两个窗口。原实现每根 Bar 都重算整段
+        # 布林带，五年数据会退化为非常慢的重复计算。
+        previous_window = closes[-self.period - 1 : -1]
+        current_window = closes[-self.period :]
+        previous_middle = sum(previous_window) / self.period
+        current_middle = sum(current_window) / self.period
+        previous_deviation = pstdev(previous_window)
+        current_deviation = pstdev(current_window)
+        previous_lower = previous_middle - self.std_multiplier * previous_deviation
+        current_lower = current_middle - self.std_multiplier * current_deviation
+        previous_upper = previous_middle + self.std_multiplier * previous_deviation
+        current_upper = current_middle + self.std_multiplier * current_deviation
         previous_close, current_close = closes[-2], closes[-1]
         if previous_close < previous_lower and current_close >= current_lower:
             return Side.BUY

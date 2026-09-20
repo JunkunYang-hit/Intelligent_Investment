@@ -12,6 +12,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+futu = ["futu-api>=10.0"]
 
 [project.scripts]
 quant-demo = "quant_demo.main:main"
