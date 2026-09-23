@@ -192,9 +192,28 @@ def momentum_rank(
 # --------------------------------------------------------------------------- #
 # 量化选股指标：活跃度 / 波动率 / 流动性分级 / 综合排名
 # --------------------------------------------------------------------------- #
+# 固定绝对阈值（不依赖池子内其他股票，任何单只股票可独立判定）
+# 校准依据：基于32只大盘股五年真实数据的分布范围 + 学术惯例
+TURNOVER_TIERS: dict[str, tuple[float, float]] = {
+    # (中线下限, 高线下限)，单位：市场本币
+    "SH": (10e8, 30e8),    # A股：日均成交额 10亿=中线，30亿=高线
+    "SZ": (10e8, 30e8),
+    "HK": (10e8, 30e8),    # 港股：10亿港元=中线，30亿=高线
+    "US": (10e8, 30e8),    # 美股：10亿美元=中线，30亿=高线
+}
+AMIHUD_TIERS: tuple[float, float] = (1e-11, 5e-12)   # (低活跃度线, 高活跃度线)，值越小越活跃
+VOLATILITY_TIERS: tuple[float, float] = (0.30, 0.40)  # (低波动上限, 高波动下限)，中间为中波动
+SHARPE_TIERS: tuple[float, float] = (0.0, 0.5)        # (合格线, 优秀线)
+MAX_DRAWDOWN_REFERENCE = 0.80   # 回撤评分参考最大值（-80%对应0分）
+
+
 @dataclass
 class StockMetrics:
-    """单只标的的全量化画像。所有指标均可由 OHLCV 日 K 计算，不依赖基本面数据。"""
+    """单只标的的全量化画像。所有指标均可由 OHLCV 日 K 计算，不依赖基本面数据。
+
+    分级使用固定绝对阈值（TURNOVER_TIERS / AMIHUD_TIERS / VOLATILITY_TIERS），
+    任何单只股票可独立判定——不依赖池子里有没有其他股票。
+    """
 
     symbol: str
     market: str
@@ -228,16 +247,50 @@ def _safe_stat(values: list[float]) -> tuple[float, float]:
     return mean, var ** 0.5
 
 
+def _tier_by_value(value: float, low_line: float, high_line: float,
+                   higher_is_better: bool = True) -> str:
+    """按固定阈值三分位分级。"""
+    if higher_is_better:
+        if value >= high_line:
+            return "高"
+        elif value >= low_line:
+            return "中"
+        else:
+            return "低"
+    else:
+        if value <= high_line:
+            return "高"
+        elif value <= low_line:
+            return "中"
+        else:
+            return "低"
+
+
+def _score_0_100(value: float, ref_low: float, ref_high: float,
+                 higher_is_better: bool = True) -> float:
+    """将指标值线性映射到 0~100 分。"""
+    if higher_is_better:
+        if value >= ref_high:
+            return 100.0
+        if value <= ref_low:
+            return 0.0
+        return (value - ref_low) / (ref_high - ref_low) * 100
+    else:
+        if value <= ref_high:
+            return 100.0
+        if value >= ref_low:
+            return 0.0
+        return (ref_low - value) / (ref_low - ref_high) * 100
+
+
 def compute_metrics(bars: list[Bar]) -> StockMetrics:
-    """从日 K 序列计算全量化画像。
+    """从日 K 序列计算全量化画像，使用固定绝对阈值分级。
 
     不需要基本面数据——所有指标从 OHLCV 派生：
       - 活跃度用 Amihud 非流动性（学术标准）和换手率代理
       - 波动率用日对数收益标准差 × √244
-      - 流动性按成交额分位分级
+      - 分级用固定阈值，任何单只股票可独立判定
     """
-    from quant_demo.data.selection import avg_turnover, volume_multiplier
-
     seq = sorted(bars, key=lambda x: x.datetime)
     n = len(seq)
     closes = [b.close for b in seq]
@@ -277,80 +330,54 @@ def compute_metrics(bars: list[Bar]) -> StockMetrics:
     avg_price = sum(closes) / n
     turnover_rate = avg_vol / avg_price if avg_price > 0 else 0.0
 
+    # ---- 用固定绝对阈值分级（不依赖池内其他股票）---- #
+    t_low, t_high = TURNOVER_TIERS[market]
+    liq_tier = _tier_by_value(turnover, t_low, t_high, higher_is_better=True)
+
+    a_low, a_high = AMIHUD_TIERS  # 1e-11, 5e-12
+    act_tier = _tier_by_value(amihud, a_low, a_high, higher_is_better=False)
+
+    v_low, v_high = VOLATILITY_TIERS  # 0.30, 0.40
+    if ann_vol <= v_low:
+        vol_tier = "低波动"
+    elif ann_vol <= v_high:
+        vol_tier = "中波动"
+    else:
+        vol_tier = "高波动"
+
+    # ---- 综合评分（0~100，固定参照值）---- #
+    liq_score = _score_0_100(turnover, 0.0, t_high, higher_is_better=True)
+    act_score = _score_0_100(amihud, a_low * 4, a_high, higher_is_better=False) if amihud != float('inf') else 0.0
+    risk_adj = max(min(sharpe / 2.0, 1.0), -1.0) * 0.5 + 0.5  # Sharpe -2~2 映射到 0~1
+    risk_score = risk_adj * 100
+    dd_score = (1.0 - abs(mdd) / MAX_DRAWDOWN_REFERENCE) * 100 if abs(mdd) < MAX_DRAWDOWN_REFERENCE else 0.0
+    composite = (liq_score * 0.30 + act_score * 0.25 + risk_score * 0.30 + dd_score * 0.15)
+
     return StockMetrics(
         symbol=symbol, market=market,
         avg_turnover=turnover, avg_volume=avg_vol,
-        liquidity_tier="",
+        liquidity_tier=liq_tier,
         avg_turnover_rate=turnover_rate,
         amihud_illiquidity=amihud,
-        activity_tier="",
-        annual_volatility=ann_vol, max_drawdown=mdd, vol_tier="",
+        activity_tier=act_tier,
+        annual_volatility=ann_vol, max_drawdown=mdd, vol_tier=vol_tier,
         total_return=total_ret, annual_return=ann_ret, sharpe_ratio=sharpe,
+        composite_score=composite,
     )
 
 
 def rank_and_tier(all_bars: list[Bar]) -> list[StockMetrics]:
-    """对整个股票池计算指标、分级、综合排名。返回按 composite_score 降序排列。
+    """对整个股票池计算指标并排名。返回按 composite_score 降序排列。
 
-    分级方法：按指标在全池中的三分位划分（高/中/低）。
-    综合评分（0~100）= 流动性30% + 活跃度25% + 风险调整收益30% + 低回撤15%。
+    注意：分级和评分在 compute_metrics 中用固定绝对阈值完成，
+    本函数仅做批量计算和排序——单只股票用 compute_metrics 即可独立判定。
     """
     by_symbol: dict[str, list[Bar]] = {}
     for b in all_bars:
         by_symbol.setdefault(b.symbol, []).append(b)
     metrics = [compute_metrics(seq) for seq in by_symbol.values()]
-    if not metrics:
-        return []
-
-    # 三分位阈值
-    turnovers = sorted(m.avg_turnover for m in metrics)
-    amihuds = sorted(m.amihud_illiquidity for m in metrics if m.amihud_illiquidity != float('inf'))
-    vols = sorted(m.annual_volatility for m in metrics)
-    t33 = turnovers[len(turnovers) // 3]
-    t67 = turnovers[len(turnovers) * 2 // 3]
-    a33 = amihuds[len(amihuds) // 3] if amihuds else 0
-    a67 = amihuds[len(amihuds) * 2 // 3] if amihuds else 0
-    v33 = vols[len(vols) // 3]
-    v67 = vols[len(vols) * 2 // 3]
-
-    max_amihud = max((m.amihud_illiquidity for m in metrics if m.amihud_illiquidity != float('inf')), default=1)
-    min_mdd = min(m.max_drawdown for m in metrics)
-    max_mdd_abs = abs(min_mdd) if min_mdd < 0 else 0.5
-
-    for m in metrics:
-        # 流动性分级（成交额越大越好）
-        if m.avg_turnover >= t67:
-            m.liquidity_tier = "高"
-        elif m.avg_turnover >= t33:
-            m.liquidity_tier = "中"
-        else:
-            m.liquidity_tier = "低"
-
-        # 活跃度分级（Amihud 越小越活跃/流动）
-        if m.amihud_illiquidity <= a33:
-            m.activity_tier = "高"
-        elif m.amihud_illiquidity <= a67:
-            m.activity_tier = "中"
-        else:
-            m.activity_tier = "低"
-
-        # 波动率分级
-        if m.annual_volatility <= v33:
-            m.vol_tier = "低波动"
-        elif m.annual_volatility <= v67:
-            m.vol_tier = "中波动"
-        else:
-            m.vol_tier = "高波动"
-
-        # 综合评分（各维度归一化到 0~1，加权求和 × 100）
-        liq_score = min(m.avg_turnover / max(turnovers[-1], 1), 1.0) if turnovers else 0
-        # Amihud 越小越好 → 反转
-        act_score = 1.0 - min(m.amihud_illiquidity / max(max_amihud, 1e-20), 1.0) if max_amihud > 0 else 0.5
-        risk_adj = max(min(m.sharpe_ratio / 2.0, 1.0), -1.0) * 0.5 + 0.5  # Sharpe 映射到 0~1
-        # 回撤越小（绝对值）越好
-        dd_score = 1.0 - abs(m.max_drawdown) / max_mdd_abs if max_mdd_abs > 0 else 0.5
-
-        m.composite_score = (liq_score * 0.30 + act_score * 0.25 + risk_adj * 0.30 + dd_score * 0.15) * 100
+    metrics.sort(key=lambda m: -m.composite_score)
+    return metrics
 
     metrics.sort(key=lambda m: -m.composite_score)
     return metrics
