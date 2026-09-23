@@ -6,3 +6,6 @@ __pycache__/
 dist/
 build/
 .quant_demo/
+
+# QMT SDK 自动创建的目录
+down_queue_*
